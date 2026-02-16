@@ -13,6 +13,9 @@ const config = {
       fallback: "index.html",
     }),
   },
+  compilerOptions: {
+    hmr: true
+  }
 };
 
 export default config;
