@@ -1,26 +1,21 @@
 <script lang="ts">
   import { invoke } from "@tauri-apps/api/core";
   import { httpRequestStore } from "../lib/stores/httpRequestStore";
-  // let name = $state("");
-  // let greetMsg = $state("");
+  import { httpResponseStore } from "$lib/stores/httpResponseStore";
 
-  // async function greet(event: Event) {
-  //   event.preventDefault();
-  //   // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
-  //   greetMsg = await invoke("greet", { name });
-  // }
-  // let method = $httpRequestStore.method;
-  let selectedTab = $state("HEADERS");
-  let httpResponse = $state("");
+  let selectedRequestTab = $state("HEADERS");
+  let selectedResponseTab = $state("HEADERS");
   function parseHeaders(rawHeaders: string): Map<string, string> {
-    if(!rawHeaders || rawHeaders.trim().length === 0 ) return new Map();
+    if (!rawHeaders || rawHeaders.trim().length === 0) return new Map();
     const lines = rawHeaders.split("\n");
-    return new Map(lines.map(it => it.split(":", 2)).map(it => [it[0], it[1]] as const));
+    return new Map(
+      lines.map((it) => it.split(":", 2)).map((it) => [it[0], it[1]] as const),
+    );
   }
   async function sendHttpRequest(event: Event) {
     // $inspect(httpRequestStore);
-    
-    let result = await invoke("execute_http_request", {
+
+    let result: { body: string, headers: any[]} = await invoke("execute_http_request", {
       request: {
         method: $httpRequestStore.httpMethod,
         url: $httpRequestStore.url,
@@ -28,7 +23,9 @@
         body: $httpRequestStore.body,
       },
     });
-    httpResponse = JSON.stringify(result);
+    httpResponseStore.updateBody(result.body);
+    let parsedHeaders = Object.entries(result.headers).map(it => `${it[0]}: ${it[1]}`).join("\n");
+    httpResponseStore.updateHeaders(parsedHeaders);
   }
 </script>
 
@@ -43,7 +40,7 @@
               bind:value={$httpRequestStore.httpMethod}
               class="border-2 rounded-l-sm px-2"
             >
-              <option>GET</option>
+              <option selected>GET</option>
               <option>POST</option>
               <option>PUT</option>
               <option>PATCH</option>
@@ -61,23 +58,25 @@
           <div>
             <div class="flex flex-row">
               <button
-                onclick={() => (selectedTab = "HEADERS")}
+                onclick={() => (selectedRequestTab = "HEADERS")}
                 class={"min-w-12 border-t-2 border-l-2 rounded-tl-sm px-2 border-b-2" +
-                  (selectedTab === "HEADERS" ? "border-b-transparent" : "")}
+                  (selectedRequestTab === "HEADERS"
+                    ? "border-b-transparent"
+                    : "")}
               >
                 headers
               </button>
               <button
-                onclick={() => (selectedTab = "BODY")}
+                onclick={() => (selectedRequestTab = "BODY")}
                 class={"min-w-12 border-t-2 border-l-2 border-r-2 rounded-tr-sm px-2 border-b-2" +
-                  (selectedTab === "BODY" ? "border-b-transparent" : "")}
+                  (selectedRequestTab === "BODY" ? "border-b-transparent" : "")}
               >
                 body
               </button>
               <p class="flex-1 border-b-2"></p>
             </div>
             <div>
-              {#if selectedTab === "HEADERS"}
+              {#if selectedRequestTab === "HEADERS"}
                 <textarea
                   id="headers-input"
                   class="w-full resize-none border-2 border-t-0 rounded-b-sm"
@@ -96,13 +95,51 @@
               {/if}
             </div>
           </div>
-      <p>{httpResponse}</p>
+          <div>
+            <div class="flex flex-row">
+              <button
+                onclick={() => (selectedResponseTab = "HEADERS")}
+                class={"min-w-12 border-t-2 border-l-2 rounded-tl-sm px-2 border-b-2" +
+                  (selectedResponseTab === "HEADERS"
+                    ? "border-b-transparent"
+                    : "")}
+              >
+                headers
+              </button>
+              <button
+                onclick={() => (selectedResponseTab = "BODY")}
+                class={"min-w-12 border-t-2 border-l-2 border-r-2 rounded-tr-sm px-2 border-b-2" +
+                  (selectedResponseTab === "BODY"
+                    ? "border-b-transparent"
+                    : "")}
+              >
+                body
+              </button>
+              <p class="flex-1 border-b-2"></p>
+            </div>
 
+            <div>
+              {#if selectedResponseTab === "HEADERS"}
+            <textarea
+              class="w-full resize-none border-2 border-t-0 rounded-b-sm"
+              rows="20"
+              disabled
+              bind:value={$httpResponseStore.headers}
+            ></textarea>
+              {:else}
+            <textarea
+              class="w-full resize-none border-2 border-t-0 rounded-b-sm"
+              rows="20"
+              disabled
+              bind:value={$httpResponseStore.body}
+            ></textarea>
+              {/if}
+            </div>
+          </div>
         </div>
       </form>
     </div>
-    <div>
-    </div>
+    <div></div>
   </div>
 </main>
 
