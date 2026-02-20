@@ -1,8 +1,14 @@
+pub mod history;
+
 use std::collections::HashMap;
 
+use anyhow::Result;
+use rusqlite::Connection;
 use serde::{Deserialize, Serialize};
-use tauri::http::{Method, StatusCode};
+use tauri::{State, async_runtime::Mutex, http::{Method}};
 use tauri_plugin_http::reqwest::{self};
+
+use crate::history::{create_http_history, get_all_http_history};
 
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
 #[tauri::command]
@@ -10,7 +16,7 @@ fn greet(name: &str) -> String {
     format!("Hello, {}! You've been greeted from Rust!", name)
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug)]
 #[serde(rename_all = "UPPERCASE")]
 pub enum HttpMethod {
     POST,
@@ -30,7 +36,7 @@ impl From<HttpMethod> for Method {
     }
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct HttpRequest {
     pub method: HttpMethod,
     pub url: String,
@@ -45,8 +51,17 @@ pub struct HttpResponse {
     pub headers: HashMap<String, String>,
 }
 
+struct AppState {
+    conn: Mutex<Connection>
+}
+
 #[tauri::command]
-async fn execute_http_request(request: HttpRequest) -> Result<HttpResponse, String> {
+async fn execute_http_request(request: HttpRequest, app_state: State<'_, AppState>) -> Result<HttpResponse, String> {
+    let conn = app_state.conn.lock().await;
+    match create_http_history(&conn, &request) {
+        Err(e) => println!("{:?}", e),
+        _ => ()
+    }
     let client = reqwest::Client::new();
     let mut req = client.request(request.method.into(), request.url);
     req = match request.body {
@@ -71,13 +86,17 @@ async fn execute_http_request(request: HttpRequest) -> Result<HttpResponse, Stri
         }),
         Err(err) => match err.status() {
             Some(code) => Err(code.to_string()),
-            None => Err("Something went wrong!".to_string())
-        }
+            None => Err("Something went wrong!".to_string()),
+        },
     }
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    let conn = Connection::open("test.db").unwrap();
+    println!("{:?}", conn.path());
+    conn.execute("CREATE TABLE IF NOT EXISTS http_request_history (id TEXT PRIMARY KEY, timestamp TEXT NOT NULL, method TEXT NOT NULL, url TEXT NOT NULL, headers TEXT, body TEXT)", []).unwrap();
+    println!("{:?}", get_all_http_history(&conn).unwrap());
     tauri::Builder::default()
         .plugin(
             tauri_plugin_log::Builder::new()
@@ -86,6 +105,7 @@ pub fn run() {
         )
         .plugin(tauri_plugin_http::init())
         .plugin(tauri_plugin_opener::init())
+        .manage(AppState { conn: Mutex::new(conn) })
         .invoke_handler(tauri::generate_handler![greet, execute_http_request])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

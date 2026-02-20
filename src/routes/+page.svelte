@@ -2,6 +2,8 @@
   import { invoke } from "@tauri-apps/api/core";
   import { httpRequestStore } from "../lib/stores/httpRequestStore";
   import { httpResponseStore } from "$lib/stores/httpResponseStore";
+  import HttpEditor from "../components/httpEditor.svelte";
+  import { prettify } from "htmlfy";
 
   let selectedRequestTab = $state("HEADERS");
   let selectedResponseTab = $state("HEADERS");
@@ -14,8 +16,11 @@
   }
   async function sendHttpRequest(event: Event) {
     // $inspect(httpRequestStore);
+    console.log(event);
+    if(!$httpRequestStore.httpMethod) return;
+    if(!$httpRequestStore.url) return;
 
-    let result: { body: string, headers: any[]} = await invoke("execute_http_request", {
+    let result: { body: string, headers: any[]} = await invoke("execute_http_request", {      
       request: {
         method: $httpRequestStore.httpMethod,
         url: $httpRequestStore.url,
@@ -23,18 +28,29 @@
         body: $httpRequestStore.body,
       },
     });
-    httpResponseStore.updateBody(result.body);
-    let parsedHeaders = Object.entries(result.headers).map(it => `${it[0]}: ${it[1]}`).join("\n");
+    let headersEntries = Object.entries(result.headers);
+    let parsedHeaders = headersEntries.map(it => `${it[0]}: ${it[1]}`).join("\n");
     httpResponseStore.updateHeaders(parsedHeaders);
+    console.log(result.headers);
+    if(headersEntries.find((it: [string, string]) => it[0].toLowerCase() === "content-type" && it[1].includes("text/html"))) {
+      httpResponseStore.updateBody(prettify(result.body));
+    } else {
+      httpResponseStore.updateBody(result.body);
+
+    }
+
   }
 </script>
 
-<main class="w-full flex flex-col p-2">
+<main class="h-screen w-screen flex flex-col p-2">
   <h1>API Tester</h1>
-  <div class="flex flex-row w-full">
-    <div class="w-full">
-      <form onsubmit={sendHttpRequest} class="flex flex-col">
-        <div class="flex flex-col gap-2">
+  <div class="flex flex-row w-full h-full gap-2">
+    <div class="w-1/4 border-2 rounded-sm">
+      <p>History</p>
+    </div>
+    <div class="flex-1">
+      <form onsubmit={sendHttpRequest} class="flex flex-col h-full">
+        <div class="flex flex-col gap-2 h-full">
           <div class="flex flex-row w-full">
             <select
               bind:value={$httpRequestStore.httpMethod}
@@ -55,86 +71,9 @@
               >SEND</button
             >
           </div>
-          <div>
-            <div class="flex flex-row">
-              <button
-                onclick={() => (selectedRequestTab = "HEADERS")}
-                class={"min-w-12 border-t-2 border-l-2 rounded-tl-sm px-2 border-b-2" +
-                  (selectedRequestTab === "HEADERS"
-                    ? "border-b-transparent"
-                    : "")}
-              >
-                headers
-              </button>
-              <button
-                onclick={() => (selectedRequestTab = "BODY")}
-                class={"min-w-12 border-t-2 border-l-2 border-r-2 rounded-tr-sm px-2 border-b-2" +
-                  (selectedRequestTab === "BODY" ? "border-b-transparent" : "")}
-              >
-                body
-              </button>
-              <p class="flex-1 border-b-2"></p>
-            </div>
-            <div>
-              {#if selectedRequestTab === "HEADERS"}
-                <textarea
-                  id="headers-input"
-                  class="w-full resize-none border-2 border-t-0 rounded-b-sm"
-                  rows="20"
-                  placeholder="Enter a http headers..."
-                  bind:value={$httpRequestStore.headers}
-                ></textarea>
-              {:else}
-                <textarea
-                  id="body-input"
-                  class="w-full resize-none border-2 border-t-0 rounded-b-sm"
-                  rows="20"
-                  placeholder="Enter a http body..."
-                  bind:value={$httpRequestStore.body}
-                ></textarea>
-              {/if}
-            </div>
-          </div>
-          <div>
-            <div class="flex flex-row">
-              <button
-                onclick={() => (selectedResponseTab = "HEADERS")}
-                class={"min-w-12 border-t-2 border-l-2 rounded-tl-sm px-2 border-b-2" +
-                  (selectedResponseTab === "HEADERS"
-                    ? "border-b-transparent"
-                    : "")}
-              >
-                headers
-              </button>
-              <button
-                onclick={() => (selectedResponseTab = "BODY")}
-                class={"min-w-12 border-t-2 border-l-2 border-r-2 rounded-tr-sm px-2 border-b-2" +
-                  (selectedResponseTab === "BODY"
-                    ? "border-b-transparent"
-                    : "")}
-              >
-                body
-              </button>
-              <p class="flex-1 border-b-2"></p>
-            </div>
-
-            <div>
-              {#if selectedResponseTab === "HEADERS"}
-            <textarea
-              class="w-full resize-none border-2 border-t-0 rounded-b-sm"
-              rows="20"
-              disabled
-              bind:value={$httpResponseStore.headers}
-            ></textarea>
-              {:else}
-            <textarea
-              class="w-full resize-none border-2 border-t-0 rounded-b-sm"
-              rows="20"
-              disabled
-              bind:value={$httpResponseStore.body}
-            ></textarea>
-              {/if}
-            </div>
+          <div class="flex flex-col flex-1 gap-2">
+            <HttpEditor class="h-full" store={httpRequestStore} mode={selectedRequestTab} disabled={false}></HttpEditor>
+            <HttpEditor class="h-full" store={httpResponseStore} mode={selectedResponseTab} disabled={true}></HttpEditor>
           </div>
         </div>
       </form>
