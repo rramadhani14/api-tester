@@ -4,9 +4,15 @@
   import { httpResponseStore } from "$lib/stores/httpResponseStore";
   import HttpEditor from "../components/httpEditor.svelte";
   import { prettify } from "htmlfy";
-
+  import { event } from "@tauri-apps/api";
   let selectedRequestTab = $state("HEADERS");
   let selectedResponseTab = $state("HEADERS");
+  $effect(() => {
+    const listener = event.listen("http-request-history", (e) => { console.log(e) })
+    return async () => {
+      (await listener)()
+    }
+  })
   function parseHeaders(rawHeaders: string): Map<string, string> {
     if (!rawHeaders || rawHeaders.trim().length === 0) return new Map();
     const lines = rawHeaders.split("\n");

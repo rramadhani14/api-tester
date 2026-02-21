@@ -6,7 +6,7 @@ use uuid::Uuid;
 
 use crate::{HttpRequest};
 
-#[derive(Deserialize, Serialize, Debug)]
+#[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct HttpRequestHistoryEntry {
     id: Uuid,
     timestamp: DateTime<Utc>,
@@ -37,7 +37,7 @@ pub fn get_all_http_history(conn: &Connection) -> Result<Vec<HttpRequestHistoryE
 }
 
 
-pub fn create_http_history(conn: &Connection, http_request: &HttpRequest) -> Result<()> {
+pub fn create_http_history(conn: &Connection, http_request: &HttpRequest) -> Result<HttpRequestHistoryEntry> {
     let id = Uuid::new_v4();
     let timestamp = Utc::now();
     let _ = conn.execute("INSERT INTO http_request_history (id, timestamp, method, url, headers, body) VALUES (?1, ?2, ?3, ?4, ?5, ?6)", params![
@@ -48,5 +48,9 @@ pub fn create_http_history(conn: &Connection, http_request: &HttpRequest) -> Res
         serde_json::to_string(&http_request.headers)?,
         http_request.body
     ]);
-    Ok(())
+    Ok(HttpRequestHistoryEntry {
+        id,
+        timestamp,
+        http_request: http_request.clone()
+    })
 }
