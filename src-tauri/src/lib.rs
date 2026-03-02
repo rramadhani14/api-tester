@@ -16,7 +16,7 @@ fn greet(name: &str) -> String {
     format!("Hello, {}! You've been greeted from Rust!", name)
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, Copy)]
 #[serde(rename_all = "UPPERCASE")]
 pub enum HttpMethod {
     POST,
@@ -44,7 +44,7 @@ pub struct HttpRequest {
     pub headers: Option<HashMap<String, String>>,
 }
 
-#[derive(Serialize, Debug)]
+#[derive(Serialize, Debug, Clone, Deserialize)]
 pub struct HttpResponse {
     pub status_code: u16,
     pub body: String,
@@ -56,22 +56,20 @@ struct AppState {
 }
 
 #[tauri::command]
-async fn execute_http_request(request: HttpRequest, app: AppHandle, app_state: State<'_, AppState>) -> Result<HttpResponse, String> {
+async fn execute_http_request(request: HttpRequest, app: AppHandle, app_state: State<'_, AppState>) -> Result<HttpRequestHistoryEntry, String> {
     let conn = app_state.conn.lock().await;
-    match create_http_history(&conn, &request) {
-        Err(e) => println!("{:?}", e),
-        Ok(entry) => {
-            let _ = app.emit("http-request-history", entry).unwrap();
-        }
-    }
     let client = reqwest::Client::new();
-    let mut req = client.request(request.method.into(), request.url);
-    req = match request.body {
+    let request_copy = request.clone();
+    let body = request.body;
+    let url = request.url;
+    let method = request.method;
+    let mut req = client.request(method.into(), url);
+    req = match body {
         Some(body) => req.body(body),
         _ => req,
     };
     let response = req.send().await;
-    match response {
+    let result = match response {
         Ok(response) => Ok(HttpResponse {
             status_code: response.status().as_u16(),
             headers: response
@@ -90,6 +88,10 @@ async fn execute_http_request(request: HttpRequest, app: AppHandle, app_state: S
             Some(code) => Err(code.to_string()),
             None => Err("Something went wrong!".to_string()),
         },
+    };
+    match create_http_history(&conn, &request_copy, &result.ok()) {
+        Ok(t) => Ok(t),
+        Err(_) => Err("Failed to execute request".to_string())
     }
 }
 
@@ -107,7 +109,7 @@ async fn get_http_request_history(app_state: State<'_, AppState>) -> Result<Vec<
 pub fn run() {
     let conn = Connection::open("test.db").unwrap();
     println!("{:?}", conn.path());
-    conn.execute("CREATE TABLE IF NOT EXISTS http_request_history (id TEXT PRIMARY KEY, timestamp TEXT NOT NULL, method TEXT NOT NULL, url TEXT NOT NULL, headers TEXT, body TEXT)", []).unwrap();
+    conn.execute("CREATE TABLE IF NOT EXISTS http_request_history (id TEXT PRIMARY KEY, timestamp TEXT NOT NULL, method TEXT NOT NULL, url TEXT NOT NULL, headers TEXT, body TEXT, http_response)", []).unwrap();
     println!("{:?}", get_all_http_history(&conn).unwrap());
     tauri::Builder::default()
         .plugin(

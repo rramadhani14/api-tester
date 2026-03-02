@@ -5,6 +5,7 @@
   import HttpEditor from "../components/httpEditor.svelte";
   import { prettify } from "htmlfy";
   import { event } from "@tauri-apps/api";
+  import { ParsedHttpRequestHistoryEntry } from "../models/httpRequestHistoryEntry";
   let selectedRequestTab = $state("HEADERS");
   let selectedResponseTab = $state("HEADERS");
   $effect(() => {
@@ -21,12 +22,11 @@
     );
   }
   async function sendHttpRequest(event: Event) {
-    // $inspect(httpRequestStore);
     console.log(event);
     if(!$httpRequestStore.httpMethod) return;
     if(!$httpRequestStore.url) return;
 
-    let result: { body: string, headers: any[]} = await invoke("execute_http_request", {      
+    let result: ParsedHttpRequestHistoryEntry = await invoke("execute_http_request", {      
       request: {
         method: $httpRequestStore.httpMethod,
         url: $httpRequestStore.url,
@@ -34,15 +34,15 @@
         body: $httpRequestStore.body,
       },
     });
-    let headersEntries = Object.entries(result.headers);
+    // let parsedHistoryEntry: ParsedHttpRequestHistoryEntry = ParsedHttpRequestHistoryEntry.fromRaw(result);
+    let headersEntries = Object.entries(result.httpResponse?.headers ?? new Map());
     let parsedHeaders = headersEntries.map(it => `${it[0]}: ${it[1]}`).join("\n");
     httpResponseStore.updateHeaders(parsedHeaders);
-    console.log(result.headers);
+    console.log(result);
     if(headersEntries.find((it: [string, string]) => it[0].toLowerCase() === "content-type" && it[1].includes("text/html"))) {
-      httpResponseStore.updateBody(prettify(result.body));
+      httpResponseStore.updateBody(prettify(result.httpResponse?.body ?? ""));
     } else {
-      httpResponseStore.updateBody(result.body);
-
+      httpResponseStore.updateBody(result.httpResponse?.body ?? "");
     }
 
   }
